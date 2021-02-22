@@ -1,0 +1,261 @@
+---
+title: "Plots and compare Grubman and Mathys DGE analysis results"
+author: "Stella Belonwu"
+date: "02/17/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: Create plots for paper\
+Fig 1: Analysis scheme\
+Fig 2: Mathys DE Results: DEG xmas tree, pairwise DEG plots, heat map of shared genes\
+Fig 3: Mathys upset of shared mathys DEGs across cell types + violin plots (2 shared, 2 unique)\
+Fig 4: Grubman DE Results: DEG xmas tree, lfc plots, heat map of shared genes, upset of shared mathys DEGs across cell types + violin plots (2 shared, 2 unique)\
+*Fig 5: Grubman vs Mathys: heatmap or dotplot; Grub= green | Mathys= purple*\
+Fig 6: Cytoscape networks\
+
+Input packages
+```{r}
+library(dittoSeq)
+library(dplyr)
+library(UpSetR)
+library(Seurat)
+library(pheatmap)
+library(RColorBrewer)
+library(Hmisc)
+library(stringr)
+```
+
+Input and setup grubman data\
+```{r}
+setwd("/your directory")
+de33.markersOG<- read.csv("grubman_DEG33.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de34.markersOG<- read.csv("grubman_DEG34.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de33.markersOG$X <- NULL
+de34.markersOG$X<- NULL
+
+de33.markersOG<-de33.markersOG[de33.markersOG$gene != "MALAT1",]
+de34.markersOG<- de34.markersOG[de34.markersOG$gene != "MALAT1",]
+
+de33.markersg<- subset(de33.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+de34.markersg<- subset(de34.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+```
+
+Input and set up mathys data\
+```{r}
+setwd("/your directory")
+de33.markersOG<- read.csv("mathys_DEG33.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de34.markersOG<- read.csv("mathys_DEG34.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de33.markersOG$X <- NULL
+de34.markersOG$X<- NULL
+de33.markersm<- subset(de33.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+de34.markersm<- subset(de34.markersOG, p_val_adj < 0.05 & abs(avg_logFC) > 0.25)
+```
+
+Select genes present in both datasets\
+```{r}
+markersm<- rbind(de33.markersm, de34.markersm)
+markersg<- rbind(de33.markersg, de34.markersg)
+
+#Using genes that intersect
+math_genes<- unique(markersm$gene) #278
+grub_genes<- unique(markersg$gene) #232
+all_genes<- intersect(math_genes, grub_genes) #119
+
+de33.markersm<- de33.markersm[de33.markersm$gene %in% all_genes,]
+de34.markersm<- de34.markersm[de34.markersm$gene %in% all_genes,]
+de33.markersg<- de33.markersg[de33.markersg$gene %in% all_genes,]
+de34.markersg<- de34.markersg[de34.markersg$gene %in% all_genes,]
+```
+
+Figure 5a: Upset plots for gene overlaps across brain regions\
+Pfx: "darkmagenta", Ent= dittoColors()[3] /orange,33: "#AD7700", de34: "#1C91D4"\
+```{r}
+#c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars).
+
+#Ast
+ast.de.list<- list( "Ast_3/3_Pfx" = de33.markersm$gene[de33.markersm$cell_type == "Ast"], 
+                    "Ast_3/4_Pfx"= de34.markersm$gene[de34.markersm$cell_type == "Ast"],
+                    "Ast_3/3_Ent" = de33.markersg$gene[de33.markersg$cell_type == "ast"], 
+                    "Ast_3/4_Ent"= de34.markersg$gene[de34.markersg$cell_type == "ast"])
+upset(fromList(ast.de.list),  sets = c("Ast_3/4_Pfx", "Ast_3/4_Ent","Ast_3/3_Pfx","Ast_3/3_Ent"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Ast_3/4_Ent","Ast_3/3_Ent"), color= dittoColors()[35], active = T), 
+                     list(query = intersects, params =  list("Ast_3/3_Pfx","Ast_3/4_Pfx"), color=    "darkmagEnta", active = T),
+                     list(query = intersects, params =  list("Ast_3/4_Pfx","Ast_3/4_Ent"), color=  "#1C91D4", active = T),  
+                     list(query = intersects, params =  list("Ast_3/3_Pfx","Ast_3/3_Ent"), color=  "#AD7700", active = T)))
+grid.text("Shared and unique AD vs non-AD DEGs across brain regions in Astrocytes",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+
+#Mic
+mic.de.list<- list( "Mic_3/3_Pfx" = de33.markersm$gene[de33.markersm$cell_type == "Mic"], 
+                    "Mic_3/4_Pfx" = de34.markersm$gene[de34.markersm$cell_type == "Mic"],
+                    "Mic_3/3_Ent" = de33.markersg$gene[de33.markersg$cell_type == "mic"], 
+                    "Mic_3/4_Ent" = de34.markersg$gene[de34.markersg$cell_type == "mic"] )
+upset(fromList(mic.de.list), sets = c("Mic_3/4_Pfx", "Mic_3/4_Ent","Mic_3/3_Pfx","Mic_3/3_Ent"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs",text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Mic_3/4_Ent","Mic_3/3_Ent"), color= dittoColors()[35], active = T), list(query = intersects, params =  list("Mic_3/4_Pfx","Mic_3/4_Ent"), color= "#1C91D4", active = T)))
+grid.text("Shared and unique AD vs non-AD DEGs across brain regions in Microglia",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+
+#Ex/Neu
+neu.de.list1<- list( "Ex_3/3_Pfx" = de33.markersm$gene[de33.markersm$cell_type == "Ex"], 
+                    "Ex_3/4_Pfx" = de34.markersm$gene[de34.markersm$cell_type == "Ex"],
+                    "Neu_3/3_Ent" = de33.markersg$gene[de33.markersg$cell_type == "neu"], 
+                    "Neu_3/4_Ent" = de34.markersg$gene[de34.markersg$cell_type == "neu"])
+upset(fromList(neu.de.list1), sets = c("Ex_3/4_Pfx", "Neu_3/4_Ent","Ex_3/3_Pfx","Neu_3/3_Ent"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Neu_3/4_Ent","Neu_3/3_Ent"), color= dittoColors()[35], active = T),list(query = intersects, params =  list("Ex_3/4_Pfx","Ex_3/3_Pfx"), color= "darkmagEnta", active = T), list(query = intersects, params =  list("Ex_3/4_Pfx","Neu_3/4_Ent"), color=  "#1C91D4", active = T)))
+grid.text("Shared and unique AD vs non-AD DEGs across brain regions inin Excitatory Neurons",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+ 
+#In/Neu
+neu.de.list2<- list( "In_3/3_Pfx" = de33.markersm$gene[de33.markersm$cell_type == "In"],
+                    "In_3/4_Pfx" = de34.markersm$gene[de34.markersm$cell_type == "In"],
+                    "Neu_3/3_Ent" = de33.markersg$gene[de33.markersg$cell_type == "neu"],
+                    "Neu_3/4_Ent" = de34.markersg$gene[de34.markersg$cell_type == "neu"])
+upset(fromList(neu.de.list2),  sets = c("In_3/4_Pfx", "Neu_3/4_Ent","In_3/3_Pfx","Neu_3/3_Ent"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets= 4,sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25),  queries = list(list(query = intersects, params =  list("Neu_3/4_Ent","Neu_3/3_Ent"), color= dittoColors()[35], active = T), 
+                     list(query = intersects, params =  list("In_3/3_Pfx","In_3/4_Pfx"), color=    "darkmagEnta", active = T),
+                     list(query = intersects, params =  list("In_3/4_Pfx","Neu_3/4_Ent"), color=  "#1C91D4", active = T),  
+                     list(query = intersects, params =  list("In_3/3_Pfx","Neu_3/3_Ent"), color=  "#AD7700", active = T)))
+grid.text("Shared and unique AD vs non-AD DEGs across brain regions in Inhibitory Neurons",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+
+#Oli
+oli.de.list<- list( "Oli_3/3_Pfx" = de33.markersm$gene[de33.markersm$cell_type == "Oli"], 
+                    "Oli_3/4_Pfx" = de34.markersm$gene[de34.markersm$cell_type == "Oli"],
+                    "Oli_3/3_Ent" = de33.markersg$gene[de33.markersg$cell_type == "oli"], 
+                    "Oli_3/4_Ent" = de34.markersg$gene[de34.markersg$cell_type == "oli"])
+upset(fromList(oli.de.list), sets = c("Oli_3/4_Pfx","Oli_3/4_Ent","Oli_3/3_Pfx","Oli_3/3_Ent"), keep.order = TRUE, order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets= 4,sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25), queries = list(list(query = intersects, params =  list("Oli_3/4_Ent","Oli_3/3_Ent"), color= dittoColors()[35], active = T), list(query = intersects, params =  list("Oli_3/4_Ent","Oli_3/4_Pfx"), color= "#1C91D4", active = T)))
+grid.text("Shared and unique AD vs non-AD DEGs across brain regions in Oligodendrocytes",x = 0.695, y=0.98, gp=gpar(fontsize=19))
+
+#Opc
+opc.de.list<- list( "Opc_3/3_Pfx" = de33.markersm$gene[de33.markersm$cell_type == "Opc"],
+                    "Opc_3/4_Pfx" = de34.markersm$gene[de34.markersm$cell_type == "Opc"],
+                    "Opc_3/3_Ent" = de33.markersg$gene[de33.markersg$cell_type == "opc"],
+                    "Opc_3/4_Ent" = de34.markersg$gene[de34.markersg$cell_type == "opc"])
+upset(fromList(opc.de.list), sets = c("Opc_3/4_Pfx","Opc_3/4_Ent","Opc_3/3_Pfx","Opc_3/3_Ent"), keep.order = TRUE,order.by = "freq",  mainbar.y.label = "Gene Intersections", nsets= 4,sets.x.label ="Number of DEGs", text.scale = c(2.25, 2.25, 1.9, 2.25, 2.25, 2.25),queries = list(list(query = intersects, params =  list("Opc_3/4_Ent","Opc_3/3_Ent"), color= dittoColors()[35], active = T),list(query = intersects, params =  list("Opc_3/4_Ent","Opc_3/4_Pfx"), color=  "#1C91D4", active = T)))    
+grid.text("Shared and unique AD vs non-AD DEGs across brain regions in OPCs",x = 0.69, y=0.98, gp=gpar(fontsize=20))
+```
+
+Make dataset to explore overlaps\ 
+```{r}
+#Counts per APOE in each dataset to see which genes are shared in at least one cell type
+
+#Within de33 in Entorhinal cortex 
+length(unique(de33.markersg$gene)) #100
+gene_count<-as.data.frame(table(de33.markersg$gene))  
+colnames(gene_count)<- c("gene","gene_count")
+de33.markersg<- dplyr::inner_join(de33.markersg,gene_count, by="gene") 
+table(de33.markersg$gene_count)
+ 
+#Within de33 in prefrontal cortex 
+length(unique(de33.markersm$gene)) #75
+gene_count<-as.data.frame(table(de33.markersm$gene))  
+colnames(gene_count)<- c("gene","gene_count")
+de33.markersm<- dplyr::inner_join(de33.markersm,gene_count, by="gene") 
+table(de33.markersm$gene_count)
+ 
+#Within de34 in Entorhinal cortex 
+length(unique(de34.markersg$gene)) #119
+gene_count<-as.data.frame(table(de34.markersg$gene))  
+colnames(gene_count)<- c("gene","gene_count")
+de34.markersg<- dplyr::inner_join(de34.markersg,gene_count, by="gene") 
+table(de34.markersg$gene_count)
+ 
+#Within de34 in prefrontal cortex 
+length(unique(de34.markersm$gene)) #113
+gene_count<-as.data.frame(table(de34.markersm$gene))  
+colnames(gene_count)<- c("gene","gene_count")
+de34.markersm<- dplyr::inner_join(de34.markersm,gene_count, by="gene") 
+table(de34.markersm$gene_count)
+```
+
+Figure 5b: Generate heatmaps using genes that are significant\
+Orange for grubman dittoColors()[6]; Purple for mathys (darkmagenta)\
+```{r}
+setwd("/your directory")
+de33.markersOG<- read.csv("grubman_DEG33.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de34.markersOG<- read.csv("grubman_DEG34.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de33.markersOG$X <- NULL
+de34.markersOG$X<- NULL
+
+de33.markersOGg<-de33.markersOG[de33.markersOG$gene != "MALAT1",]
+de34.markersOGg<- de34.markersOG[de34.markersOG$gene != "MALAT1",]
+
+setwd("/your directory")
+de33.markersOG<- read.csv("mathys_DEG33.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de34.markersOG<- read.csv("mathys_DEG34.csv",header= TRUE, sep = ",", stringsAsFactors=FALSE)
+de33.markersOG$X <- NULL
+de34.markersOG$X<- NULL
+
+de33.markersOGm$group1<- "Pfx"
+de34.markersOGm$group1<- "Pfx"
+de33.markersOGg$group1<- "Ent"
+de34.markersOGg$group1<- "Ent"
+
+markersm<- rbind(de33.markersOGm, de34.markersOGm)
+markersg<- rbind(de33.markersOGg, de34.markersOGg)
+
+#Using genes that intersect
+math_genes<- unique(markersm$gene) #332
+grub_genes<- unique(markersg$gene) #232
+all_genes<- intersect(math_genes, grub_genes) #148
+
+all_markers<- rbind(de34.markersOGg, de34.markersOGm, de33.markersOGg, de33.markersOGm) #6304
+all_markers<- all_markers[all_markers$gene %in% all_genes,] #3256
+all_markers<- subset(all_markers, p_val_adj < 0.05) #1613
+
+length(unique(all_markers$gene)) #148
+all_markers$group2<- paste0(all_markers$group,"_", all_markers$group1)
+```
+
+Create matrix for heatmap\  
+```{r}
+all_markers$group2<- capitalize(all_markers$group2)
+colnames(all_markers)
+all_markers<- all_markers[,c(10,1,13)]
+for(ct in unique(all_markers$group2)){
+ new_col<- print(paste0('all_markers$',ct,'<- ifelse(all_markers$group2 == "',ct,'",all_markers$avg_logFC, 0)'),sep='',quote = FALSE)  
+ show(eval(expr = parse(text = new_col)))
+}
+
+#Remove duplicates: if repeats, add colsums of all repeated rows then remove duplicates
+all_markers <- all_markers %>% group_by(gene) %>% mutate(count = n())
+length(which(all_markers$count > 1)) #1613
+which(all_markers$gene == "LINGO1")   
+
+all_markers<- all_markers %>%
+   arrange(gene)
+which(all_markers$gene ==  "LINGO1")  
+
+all_markers<- all_markers %>%                  # Specify data frame
+  group_by(gene) %>%                             # Specify group indicator
+  summarise_at(vars(colnames(all_markers[,4:25])),  # Specify column
+               list(name = sum))                        # Specify function
+
+class(all_markers) #tibble
+all_markers<- as.data.frame(all_markers)
+colnames(all_markers)[2:23]<-gsub("_name","",colnames(all_markers[2:23])) 
+rownames(all_markers)<- all_markers$gene
+```
+
+Generate heatmaps:\ 
+pfx: "darkmagenta", ent= dittoColors()[6] /orange, 33: "#AD7700", de33: "#1C91D4"\
+```{r}
+all_markers$gene<- NULL
+colnames(all_markers)<- gsub("33","_3/3",colnames(all_markers))
+colnames(all_markers)<- gsub("34","_3/4",colnames(all_markers))
+
+metadata <- data.frame(Region_APOE= factor(c("Ast_3/3_Ent" ,"Ast_3/3_Pfx", "Mic_3/3_Ent", "Mic_3/3_Pfx" ,"Oli_3/3_Ent" ,"Oli_3/3_Pfx", "Opc_3/3_Ent", "Opc_3/3_Pfx" ,"Neu_3/3_Ent", "Ex_3/3_Pfx",  "In_3/3_Pfx" , "Ast_3/4_Ent", "Ast_3/4_Pfx" ,"Mic_3/4_Ent","Mic_3/4_Pfx", "Oli_3/4_Ent", "Oli_3/4_Pfx" ,"Opc_3/4_Ent" ,"Opc_3/4_Pfx", "Neu_3/4_Ent", "Ex_3/4_Pfx","In_3/4_Pfx")))
+rownames(metadata)<- metadata$Region_APOE
+
+metadata$APOE<- str_sub(metadata$Region_APOE,-7,-5) #ApoE
+metadata$Brain_Region<- str_sub(metadata$Region_APOE,-3,-1)
+metadata$Celltype<- gsub("_3/4_Ent", "",metadata$Region_APOE) 
+metadata$Celltype<- gsub("_3/4_Pfx", "",metadata$Celltype) 
+metadata$Celltype<- gsub("_3/3_Ent", "",metadata$Celltype) 
+metadata$Celltype<- gsub("_3/3_Pfx", "",metadata$Celltype) 
+
+metadata$Region_APOE<- NULL
+
+metac<- list(APOE = c("3/3"= "#AD7700", "3/4" = "#1C91D4"), Brain_Region= c(Ent= dittoColors()[35], Pfx=  "darkmagenta"), Celltype=( c("Ast" = "#E69F00", "Ex"= "#009E73","In"= "#F0E442" ,"Neu"= "aquamarine2", "Mic" = "#0072B2", "Oli"="#D55E00","Opc" ="#CC79A7" )))
+
+range(all_markers) # -2.917965  3.838626
+rangem <- max(abs(all_markers));
+pheatmap(all_markers, angle_col= "90", angle_row= "45",fontsize_row = 12,fontsize_col= 12 , show_rownames = FALSE, show_colnames = FALSE, scale = "none" ,  border_color = "black",fontsize= 12,annotation_col= metadata, annotation_colors = metac ,color = colorRampPalette(c("gold3", "white", "blue"))(100), breaks = seq(-rangem, rangem, length.out = 100))
+```
+

@@ -1,0 +1,172 @@
+---
+title: "Mathys et al differential gene expression analysis"
+author: "Stella Belonwu"
+date: "02/17/2021"
+output: html_document
+---
+Goal: Use Limma Voom with TMM_wsp normalization for DE Analysis in the Mathys dataset\
+Design formula will include batch & sex where possible\
+Cutoffs are FDR < 0.05, L2FC > 0.25\
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages\
+```{r}
+library(readxl)
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(limma)
+library(edgeR)
+library(Seurat)
+```
+
+Input Seurat normalized object containing 33 and 34 samples\
+```{r}
+setwd("/your directory")
+math<- readRDS("mathys2.rds")
+```
+
+DEG for all samples\
+```{r}
+str(math@meta.data)
+
+#Create variable of interest, make sure assay is RNA, and design variables are factors
+math$diag_apoe_cell<- paste0(math$Diagnosis,"_", math$ApoE,"_",math$Cell_type)
+Idents(math) <- "diag_apoe_cell"
+table(Idents(math))
+DefaultAssay(math)<- "RNA"
+class(math$Sex)
+math$diag_apoe_cell<- as.factor(math$diag_apoe_cell)
+
+#Create design
+design<- model.matrix(~0 + diag_apoe_cell+ Sex , data = math@meta.data) 
+colnames(design) <- gsub("diag_apoe_cell", "", colnames(design))
+colnames(design) <- gsub("Sex", "", colnames(design))
+colnames(design)
+
+#Filter and normalize counts
+dge <-  as.matrix(GetAssayData(math, slot="counts")) 
+dge <- DGEList(counts= dge)
+keep <- filterByExpr(dge, design)
+summary(keep) #false 17261, true 332
+dge <- dge[keep,keep.lib.sizes=FALSE]  
+dge <- calcNormFactors(dge, method = "TMMwsp")
+
+#Run Voom and make contrasts
+vm<- voom(dge, design, plot = TRUE)
+fit <- lmFit(vm, design)
+head(coef(fit))
+
+contrasts.matrix<-  makeContrasts(Ast33= AD_33_Ast - Control_33_Ast, 
+                                  Ex33= AD_33_Ex - Control_33_Ex, 
+                                  In33= AD_33_In - Control_33_In,
+                                 Mic33= AD_33_Mic - Control_33_Mic, 
+                                 Oli33= AD_33_Oli - Control_33_Oli, 
+                                 Opc33= AD_33_Opc - Control_33_Opc,
+                                Ast34 = AD_34_Ast - Control_34_Ast, 
+                                Ex34= AD_34_Ex - Control_34_Ex,
+                                In34= AD_34_In - Control_34_In,
+                                Mic34= AD_34_Mic - Control_34_Mic,
+                                Oli34= AD_34_Oli - Control_34_Oli,
+                                Opc34= AD_34_Opc - Control_34_Opc, levels = colnames(design))
+fit <- contrasts.fit(fit, contrasts = contrasts.matrix) 
+fit <- eBayes(fit)
+
+#Run loop to get results 
+delist_key<- c("Ast33",  "Ex33", "In33", "Mic33", "Oli33" , "Opc33",
+               "Ast34","Ex34","In34", "Mic34", "Oli34", "Opc34" )
+
+library(stringr)
+markers2= NULL
+markers3= NULL
+for(key in delist_key){
+  key2<- str_sub(key,-2,-1) #ApoE
+  key1<- gsub(key2,"",key) #Cell_type
+  markers<-  topTable(fit, coef= key, sort.by = "logFC", number = Inf, adjust.method = "BH")
+  markers$group<- key
+  markers$ApoE<- key2
+  markers$cell_type<- key1
+  markers$gene<- rownames(markers)
+  markers$dir<- ifelse(markers$logFC < 0, "neg","pos")
+  colnames( markers)[c(1,4,5)] <- c("avg_logFC", "p_val", "p_val_adj")
+  markers2<- rbind(markers2, markers)  
+  markers<- subset(markers, p_val_adj < 0.05 & abs(avg_logFC) > 0.25) 
+  markers3<- rbind(markers3, markers) 
+}
+
+table(markers3$group, markers3$dir)
+
+de33.markersOG<- markers2[markers2$ApoE == "33",]
+de34.markersOG<- markers2[markers2$ApoE == "34",]
+
+write.csv(de33.markersOG, file="mathys_DEG33.csv") #lnf= limma no filter
+write.csv(de34.markersOG, file="mathys_DEG34.csv") #lnf= limma no filter
+```
+
+DEG for males only\
+```{r}
+#Create variable of interest, make sure assay is RNA, and design variables are factors
+math$diag_apoe_cell_sex<- paste0(math$Diagnosis,"_", math$ApoE,"_",math$Cell_type, "_",math$Sex)
+Idents(math) <- "diag_apoe_cell_sex"
+table(Idents(math))
+math$diag_apoe_cell_sex<- as.factor(math$diag_apoe_cell_sex)
+
+#Create design
+design<- model.matrix(~0 + diag_apoe_cell_sex , data = math@meta.data) 
+colnames(design) <- gsub("diag_apoe_cell_sex", "", colnames(design))
+colnames(design)
+
+#Filter and normalize counts
+dge <-  as.matrix(GetAssayData(math, slot="counts")) 
+dge <- DGEList(counts= dge)
+keep <- filterByExpr(dge, design)
+summary(keep) # 17261 false, 332true 
+dge <- dge[keep,keep.lib.sizes=FALSE]  
+dge <- calcNormFactors(dge, method = "TMMwsp")
+
+#Run Voom and make contrasts
+vm<- voom(dge, design, plot = TRUE)
+fit <- lmFit(vm, design)
+head(coef(fit))
+
+contrasts.matrix<-  makeContrasts(Ast33= AD_33_Ast_Male - Control_33_Ast_Male, Ast34 = AD_34_Ast_Male - Control_34_Ast_Male,
+                        Mic33= AD_33_Mic_Male - Control_33_Mic_Male, Mic34= AD_34_Mic_Male - Control_34_Mic_Male,
+                        Ex33= AD_33_Ex_Male - Control_33_Ex_Male, Ex34= AD_34_Ex_Male - Control_34_Ex_Male,
+                        In33= AD_33_In_Male - Control_33_In_Male, In34= AD_34_In_Male - Control_34_In_Male,
+                        Oli33= AD_33_Oli_Male - Control_33_Oli_Male, Oli34= AD_34_Oli_Male - Control_34_Oli_Male,
+                        Opc33= AD_33_Opc_Male - Control_33_Opc_Male, Opc34= AD_34_Opc_Male - Control_34_Opc_Male, levels = colnames(design))
+fit <- contrasts.fit(fit, contrasts = contrasts.matrix) 
+fit <- eBayes(fit)
+
+
+#Run loop to get results 
+delist_key<- c("Ast33", "Ast34", "Mic33",  "Mic34", 
+               "Ex33","Ex34" ,"In33" ,"In34" ,
+               "Oli33" ,"Oli34", "Opc33" , "Opc34" )
+
+library(stringr)
+markers2= NULL
+markers3= NULL
+for(key in delist_key){
+  key2<- str_sub(key,-2,-1) #ApoE
+  key1<- gsub(key2,"",key) #Cell_type
+  markers<-  topTable(fit, coef= key, sort.by = "logFC", number = Inf, adjust.method = "BH")  #number = 17775, 
+  markers$group<- key
+  markers$ApoE<- key2
+  markers$cell_type<- key1
+  markers$gene<- rownames(markers)
+  markers$dir<- ifelse(markers$logFC < 0, "neg","pos")
+  colnames( markers)[c(1,4,5)] <- c("avg_logFC", "p_val", "p_val_adj")
+  markers2<- rbind(markers2, markers) #no thresholds
+  markers<- subset(markers, p_val_adj < 0.05 & abs(avg_logFC) > 0.25) 
+  markers3<- rbind(markers3, markers) 
+}
+
+de33.markersOGm<- markers2[markers2$ApoE == "33",]
+de34.markersOGm<- markers2[markers2$ApoE == "34",]
+
+write.csv(de33.markersOGm, file="mathys_DEG33_males.csv")  
+write.csv(de34.markersOGm, file="mathys_DEG34_males.csv") 
+```
