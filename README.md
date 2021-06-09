@@ -1,5 +1,4 @@
 # AD_APOE_snRNAseq
-Code for analyses and figures within R for Belonwu et al. paper entitled "Single-cell transcriptomic analysis elucidates APOE genotype specific changes across cell types in two brain regions in Alzheimer’s disease."
 
 Single nuclei RNA-Seq data and metadata were accessed from their respective repositories: the prefrontal cortex from the Accelerating Medicines Partnership Alzheimer’s Disease Project (AMP-AD) Knowledge Portal under the Religious Orders Study and Memory and Aging Project (ROSMAP) (https://www.synapse.org/#!Synapse:syn18485175; https://www.synapse.org/#!Synapse:syn3157322), and the entorhinal cortex from a data repository provided by Grubman et al. (http://adsn.ddnetbio.com/). Data from the entorhinal cortex are also available from the Gene Expression Omnibus (GEO) under the accession number GSE138852. 
 
